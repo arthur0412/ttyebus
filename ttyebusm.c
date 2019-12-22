@@ -31,7 +31,7 @@
 // 2018-02-14   V1.4    Added poll to file operations
 // 2018-03-21   V1.5    Fixed read buffer overrun issue
 // 2019-06-16   V1.6    Changed IRQ for V4.19.42
-//
+// 2019-12-22   V1.7    RPI4 fixes (chons)
 //===============================================================================================================
 
 #include <linux/fs.h> 	            // file stuff
@@ -71,7 +71,7 @@ static long ttyebus_ioctl(struct file* fp, unsigned int cmd, unsigned long arg);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Galileo53");
 MODULE_DESCRIPTION("Kernel module for the ebusd directly connected through the PL011 UART to the eBus adapter");
-MODULE_VERSION("1.6");
+MODULE_VERSION("1.7");
 
 // file operations with this kernel module
 static struct file_operations ttyebus_fops =
@@ -127,6 +127,7 @@ static int IrqCounter = 0;
 // ======================
 #define RASPI_1_PERI_BASE    0x20000000              // RASPI 1
 #define RASPI_23_PERI_BASE   0x3F000000              // RASPI 2 and 3
+#define RASPI_4_PERI_BASE    0xFE000000              // RASPI 4
 
 // BCM2835 base address
 // ====================
@@ -177,6 +178,7 @@ static int IrqCounter = 0;
 // The UART interrupt on RASPI2,3 is interrupt 57 according to the BCM2835 ARM Peripherals manual.
 // For some reason it is allocated to 87 by RASPIAN. The UART interrupt on model B+ is interrupt 81.
 #define RASPI_1_UART_IRQ       81
+#define RASPI_4_UART_IRQ       34
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,42)
 #define RASPI_23_UART_IRQ      87
 #else
@@ -816,6 +818,7 @@ unsigned int ttyebus_raspi_model(void)
         {
         case '2' : return 2; break;
         case '3' : return 3; break;
+        case '4' : return 4; break;
         default: return 1;
         }
     }
@@ -851,7 +854,7 @@ int ttyebus_register(void)
     // Get the RASPI model
     // ===================
     RaspiModel = ttyebus_raspi_model();
-    if (RaspiModel < 1 || RaspiModel > 3)
+    if (RaspiModel < 1 || RaspiModel > 4)
         {
         printk(KERN_NOTICE "ttyebus: Unknown RASPI model %d\n", RaspiModel);
         return -EFAULT;
@@ -884,7 +887,7 @@ int ttyebus_register(void)
 
     // remap the I/O registers to some memory we can access later on
     // =============================================================
-    PeriBase = (RaspiModel == 1) ? RASPI_1_PERI_BASE : RASPI_23_PERI_BASE;
+    PeriBase = (RaspiModel == 1) ? RASPI_1_PERI_BASE : (RaspiModel == 4) ? RASPI_4_PERI_BASE : RASPI_23_PERI_BASE;
     GpioAddr = ioremap(PeriBase + GPIO_BASE, SZ_4K);
     UartAddr = ioremap(PeriBase + UART0_BASE, SZ_4K);
 
@@ -898,7 +901,7 @@ int ttyebus_register(void)
 
     // Install Interrupt Handler
     // =========================
-    UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : RASPI_23_UART_IRQ;
+    UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : (RaspiModel == 4) ? RASPI_4_UART_IRQ : RASPI_23_UART_IRQ;
     result = request_irq(UartIrq, ttyebus_irq_handler, 0, "ttyebus_irq_handler", NULL);
     if (result)
         {
@@ -945,7 +948,7 @@ void ttyebus_unregister(void)
     GpioAddr = 0;
     UartAddr = 0;
 
-    UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : RASPI_23_UART_IRQ;
+    UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : (RaspiModel == 4) ? RASPI_4_UART_IRQ : RASPI_23_UART_IRQ;
     free_irq(UartIrq, NULL);
 
     misc_deregister(&misc);
@@ -971,6 +974,3 @@ void ttyebus_unregister(void)
 // ===============================================================================================
 module_init(ttyebus_register);
 module_exit(ttyebus_unregister);
-
-
-

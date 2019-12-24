@@ -36,7 +36,8 @@ unload:
 install:
 	cp $(TARGET_MODULE).ko $(TARGET_DIR)/$(TARGET_MODULE).ko
 	depmod -a
-	modprobe $(TARGET_DIR)/$(TARGET_MODULE)
+	cd $(TARGET_DIR)/
+	modprobe $(TARGET_MODULE)
 	sed -i "s/$(TARGET_MODULE)//g" /etc/modules
 	echo "$(TARGET_MODULE)" >> /etc/modules
 	

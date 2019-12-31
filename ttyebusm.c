@@ -902,7 +902,14 @@ int ttyebus_register(void)
     // Install Interrupt Handler
     // =========================
     UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : (RaspiModel == 4) ? RASPI_4_UART_IRQ : RASPI_23_UART_IRQ;
-    result = request_irq(UartIrq, ttyebus_irq_handler, 0, "ttyebus_irq_handler", NULL);
+    if (RaspiModel == 4)
+        {
+        result = request_irq(UartIrq, ttyebus_irq_handler, IRQF_SHARED, "ttyebus_irq_handler", DEVICE_NAME);
+        }
+    else
+        {
+        result = request_irq(UartIrq, ttyebus_irq_handler, 0, "ttyebus_irq_handler", NULL);
+        }
     if (result)
         {
         unregister_chrdev(MajorNumber, DEVICE_NAME);

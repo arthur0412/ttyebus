@@ -17,10 +17,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This is a LINUX kernel module exclusively for the ebusd using the PL011 UART running on Raspberry Pi 3.
+// This is a LINUX kernel module exclusively for the ebusd using the PL011 UART running on Raspberry Pi 1 to 4.
 // The latency between receiving and transmitting of a character is nearly zero. This is achieved by
 // disabling the hardware FIFO at the UART completely and using a ring-buffer managed at the interrupt
 // handler of the "Receiver Holding Register" interrupt.
+//
+// With RASPI 1 to 3 we are replacing the original interrupt of ttyAMA0. With RASPI 4 the interrupt is shared between
+// all 5 UARTs and so the interrupt of ttyebus is added to the shared list. Note that interrupt numbers in Raspbian
+// (Debian) are re-ordered by some Linux-internal logic, so we must always see what interrupt is assigned at a specific
+// RASPI / Raspbian version. This can be done by executing "cat /proc/interrupts" while ttyAMA0 is still active.
+//
+// Btw., all procedures to dynamically get the interrupt number, as described in the literature, like polling all
+// possible interrupts, have failed until now.
 //
 //===============================================================================================================
 //
@@ -31,7 +39,9 @@
 // 2018-02-14   V1.4    Added poll to file operations
 // 2018-03-21   V1.5    Fixed read buffer overrun issue
 // 2019-06-16   V1.6    Changed IRQ for V4.19.42
-// 2019-12-22   V1.7    RPI4 fixes (chons)
+// 2020-01-08   V1.7    Added support for RASPI4
+// 2020-07-25	V1.8	Corrected set_fs(KERNEL_DS) for kernel 5.4
+//
 //===============================================================================================================
 
 #include <linux/fs.h> 	            // file stuff
@@ -71,7 +81,7 @@ static long ttyebus_ioctl(struct file* fp, unsigned int cmd, unsigned long arg);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Galileo53");
 MODULE_DESCRIPTION("Kernel module for the ebusd directly connected through the PL011 UART to the eBus adapter");
-MODULE_VERSION("1.7");
+MODULE_VERSION("1.8");
 
 // file operations with this kernel module
 static struct file_operations ttyebus_fops =
@@ -175,8 +185,9 @@ static int IrqCounter = 0;
 #define GPIO_PULL_DOWN      1
 #define GPIO_PULL_UP        2
 
-// The UART interrupt on RASPI2,3 is interrupt 57 according to the BCM2835 ARM Peripherals manual.
-// For some reason it is allocated to 87 by RASPIAN. The UART interrupt on model B+ is interrupt 81.
+// The UART interrupt on model B+ is allocated to 81.
+// The UART interrupt on RASPI2,3 is allocated to 87, beginning with kernel 4.19.42, it is allocated to 81.
+// For RASPI 4, the interrupt is 34 and is shared with all other UARTs.
 #define RASPI_1_UART_IRQ       81
 #define RASPI_4_UART_IRQ       34
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,42)
@@ -684,8 +695,8 @@ static int ttyebus_open(struct inode* inode, struct file* file)
 	iowrite32(0x7FF, UART_INT_CLR);
 
     // Set integer & fractional part of baud rate to 2400 Baud fixed. Divider = 3.000.000 / 2400
-    // Fractional part = 0. In contrary to the documentation, there is no additional divider by 16
-    // (RASPI 3). May be different at RASPI 1/2 ??
+    // Fractional part = 0. For Raspi3 and upwards, UART default frequency is 48.000.000 and divided
+    // by 16, which is again 3.000.000. It is assumed that the default values are not changed.
     // ===========================================================================================
 	iowrite32(3000000 / 2400, UART_INT_BAUD);
 	iowrite32(0, UART_FRAC_BAUD);
@@ -792,7 +803,7 @@ unsigned int ttyebus_raspi_model(void)
     // associated to kernel space
     // ======================================================
     mm_segment_t old_fs = get_fs();
-    set_fs(get_ds());
+    set_fs(KERNEL_DS);
 
     // read the file
     // =============
@@ -903,19 +914,16 @@ int ttyebus_register(void)
     // =========================
     UartIrq = (RaspiModel == 1) ? RASPI_1_UART_IRQ : (RaspiModel == 4) ? RASPI_4_UART_IRQ : RASPI_23_UART_IRQ;
     if (RaspiModel == 4)
-        {
         result = request_irq(UartIrq, ttyebus_irq_handler, IRQF_SHARED, "ttyebus_irq_handler", DEVICE_NAME);
-        }
     else
-        {
         result = request_irq(UartIrq, ttyebus_irq_handler, 0, "ttyebus_irq_handler", NULL);
-        }
     if (result)
         {
         unregister_chrdev(MajorNumber, DEVICE_NAME);
         printk(KERN_ALERT "ttyebus: Failed to request IRQ %d", UartIrq);
         return result;
         }
+    printk(KERN_INFO "ttyebus: Successfully requested IRQ %d", UartIrq);
 
     DeviceOpen = 0;
 

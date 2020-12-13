@@ -190,7 +190,7 @@ static int IrqCounter = 0;
 // The UART interrupt on RASPI2,3 is allocated to 87, beginning with kernel 4.19.42, it is allocated to 81.
 // For RASPI 4, the interrupt is 34 and is shared with all other UARTs.
 #define RASPI_1_UART_IRQ       81
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,00,00)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,00,00)
 #define RASPI_4_UART_IRQ       29
 #else
 #define RASPI_4_UART_IRQ       34

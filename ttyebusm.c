@@ -41,6 +41,7 @@
 // 2019-06-16   V1.6    Changed IRQ for V4.19.42
 // 2020-01-08   V1.7    Added support for RASPI4
 // 2020-07-25	V1.8	Corrected set_fs(KERNEL_DS) for kernel 5.4
+// 2020-12-13	V1.9	Fix RPI4 with kernel 5.x
 //
 //===============================================================================================================
 
@@ -81,7 +82,7 @@ static long ttyebus_ioctl(struct file* fp, unsigned int cmd, unsigned long arg);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Galileo53");
 MODULE_DESCRIPTION("Kernel module for the ebusd directly connected through the PL011 UART to the eBus adapter");
-MODULE_VERSION("1.8");
+MODULE_VERSION("1.9");
 
 // file operations with this kernel module
 static struct file_operations ttyebus_fops =
@@ -189,7 +190,11 @@ static int IrqCounter = 0;
 // The UART interrupt on RASPI2,3 is allocated to 87, beginning with kernel 4.19.42, it is allocated to 81.
 // For RASPI 4, the interrupt is 34 and is shared with all other UARTs.
 #define RASPI_1_UART_IRQ       81
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,00,00)
+#define RASPI_4_UART_IRQ       29
+#else
 #define RASPI_4_UART_IRQ       34
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,42)
 #define RASPI_23_UART_IRQ      87
 #else
